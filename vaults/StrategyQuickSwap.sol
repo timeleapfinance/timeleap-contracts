@@ -2,7 +2,7 @@
 
 pragma solidity 0.6.12;
 
-import "./libs/IStakingRewards.sol";
+import "./libs/IQuickStake.sol";
 import "./BaseStrategyLPSingle.sol";
 
 contract StrategyQuickSwap is BaseStrategyLPSingle {
@@ -49,24 +49,24 @@ contract StrategyQuickSwap is BaseStrategyLPSingle {
     }
 
     function _vaultDeposit(uint256 _amount) internal override {
-        IStakingRewards(quickSwapAddress).stake(_amount);
+        IQuickStake(quickSwapAddress).stake(_amount);
     }
 
     function _vaultWithdraw(uint256 _amount) internal override {
-        IStakingRewards(quickSwapAddress).withdraw(_amount);
+        IQuickStake(quickSwapAddress).withdraw(_amount);
     }
 
     function _vaultHarvest() internal override {
-        IStakingRewards(quickSwapAddress).getReward();
+        IQuickStake(quickSwapAddress).getReward();
     }
 
     function vaultSharesTotal() public override view returns (uint256) {
-        return IStakingRewards(quickSwapAddress).balanceOf(address(this));
+        return IQuickStake(quickSwapAddress).balanceOf(address(this));
     }
 
     function wantLockedTotal() public override view returns (uint256) {
         return IERC20(wantAddress).balanceOf(address(this))
-            .add(IStakingRewards(quickSwapAddress).balanceOf(address(this)));
+            .add(IQuickStake(quickSwapAddress).balanceOf(address(this)));
     }
 
     function _resetAllowances() internal override {
@@ -102,6 +102,6 @@ contract StrategyQuickSwap is BaseStrategyLPSingle {
     }
 
     function _emergencyVaultWithdraw() internal override {
-        IStakingRewards(quickSwapAddress).withdraw(vaultSharesTotal());
+        IQuickStake(quickSwapAddress).withdraw(vaultSharesTotal());
     }
 }

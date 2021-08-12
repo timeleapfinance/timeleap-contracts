@@ -22,28 +22,28 @@ abstract contract BaseStrategy is Ownable, ReentrancyGuard, Pausable {
 
     address public uniRouterAddress;
     address public constant usdcAddress = 0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174; // USDC token contract
-    address public constant timeAddress = 0x5c59d7cb794471a9633391c4927ade06b8787a90; // TIME token contract
-    address public constant rewardAddress = 0x917FB15E8aAA12264DCBdC15AFef7cD3cE76BA39; //
+    address public constant timeAddress = 0x5c59D7Cb794471a9633391c4927ADe06B8787a90; // TIME token contract
+    address public constant rewardAddress = 0x1F7c88A37f7d0B36E7547E3a79c2D04F90531E75; // Fee Address (held by devWallet)
     address public constant withdrawFeeAddress = 0x1c54019Abc98b07FfB5eE8C082bED89A65Df7e1D; // Withdrawal Fee Address (held by devWallet)
     address public constant feeAddress = 0x1F7c88A37f7d0B36E7547E3a79c2D04F90531E75; // Fee Address (held by devWallet)
     address public vaultChefAddress;
     address public govAddress;
 
     uint256 public lastEarnBlock = block.number;
-    uint256 public sharesTotal = 0;
+    uint256 public stakesTotal = 0;
 
     address public constant treasuryAddress = 0x52e4cf8B72bd0EE362666fc578dB916f20860bBf; // Treasury Wallet Address
     address public constant masterchefAddress = 0x41C4dFA389e8c43BA6220aa62021ed246d441306; // TIME MasterChef contract
 
-    uint256 public controllerFee = 50; //
+    uint256 public controllerFee = 50; // 0.5%
     uint256 public rewardRate = 0;
     uint256 public buyBackRate = 450; // 4.5% of all emissions are being used to buyback TIME
     uint256 public constant feeMaxTotal = 1000;
     uint256 public constant feeMax = 10000; // 100 = 1%, 10000 = 100%
 
-    uint256 public withdrawFeeFactor = 10000; // 0% withdraw fee
+    uint256 public withdrawFeeFactor = 9990; // 0.1% withdraw fee
     uint256 public constant withdrawFeeFactorMax = 10000;
-    uint256 public constant withdrawFeeFactorLL = 9800; // 0.2% withdrawal fee
+    uint256 public constant withdrawFeeFactorLL = 9980; // 0.2% withdrawal fee (lower limit)
 
     uint256 public slippageFactor = 950; // 5% default slippage tolerance
     uint256 public constant slippageFactorUL = 995;
@@ -57,13 +57,18 @@ abstract contract BaseStrategy is Ownable, ReentrancyGuard, Pausable {
     address[] public token1ToEarnedPath;
 
     event SetSettings(
-        uint256 _controllerFee,
-        uint256 _rewardRate,
-        uint256 _buyBackRate,
         uint256 _withdrawFeeFactor,
-        uint256 _slippageFactor,
-        address _uniRouterAddress
+        uint256 _slippageFactor
     );
+
+    event ResetAllowances();
+    event Pause();
+    event Unpause();
+    event Panic();
+    event SetGov(
+      address _govAddress
+    );
+
 
     modifier onlyGov() {
         require(msg.sender == govAddress, "!gov");
@@ -73,7 +78,7 @@ abstract contract BaseStrategy is Ownable, ReentrancyGuard, Pausable {
     function _vaultDeposit(uint256 _amount) internal virtual;
     function _vaultWithdraw(uint256 _amount) internal virtual;
     function earn() external virtual;
-    function vaultSharesTotal() public virtual view returns (uint256);
+    function vaultStakesTotal() public virtual view returns (uint256);
     function wantLockedTotal() public virtual view returns (uint256);
     function _resetAllowances() internal virtual;
     function _emergencyVaultWithdraw() internal virtual;
@@ -82,35 +87,40 @@ abstract contract BaseStrategy is Ownable, ReentrancyGuard, Pausable {
         // Call must happen before transfer
         uint256 wantLockedBefore = wantLockedTotal();
 
+        // _before _after check for deflationary tokens
+        uint256 _before = IERC20(wantAddress).balanceOf(address(this));
         IERC20(wantAddress).safeTransferFrom(
             address(msg.sender),
             address(this),
             _wantAmt
         );
+        uint256 _after = IERC20(wantAddress).balanceOf(address(this));
+        _wantAmt = _after.sub(_before); // Additional check for deflationary tokens
 
         // Proper deposit amount for tokens with fees, or vaults with deposit fees
-        uint256 sharesAdded = _farm();
-        if (sharesTotal > 0) {
-            sharesAdded = sharesAdded.mul(sharesTotal).div(wantLockedBefore);
+        uint256 stakesAdded = _farm();
+        if (stakesTotal > 0) {
+            stakesAdded = stakesAdded.mul(stakesTotal).div(wantLockedBefore);
         }
-        sharesTotal = sharesTotal.add(sharesAdded);
+        stakesTotal = stakesTotal.add(stakesAdded);
 
-        return sharesAdded;
+        return stakesAdded;
     }
 
     function _farm() internal returns (uint256) {
         uint256 wantAmt = IERC20(wantAddress).balanceOf(address(this));
         if (wantAmt == 0) return 0;
 
-        uint256 sharesBefore = vaultSharesTotal();
+        uint256 stakesBefore = vaultStakesTotal();
         _vaultDeposit(wantAmt);
-        uint256 sharesAfter = vaultSharesTotal();
+        uint256 stakesAfter = vaultStakesTotal();
 
-        return sharesAfter.sub(sharesBefore);
+        return stakesAfter.sub(stakesBefore);
     }
 
     function withdraw(address _userAddress, uint256 _wantAmt) external onlyOwner nonReentrant returns (uint256) {
         require(_wantAmt > 0, "_wantAmt is 0");
+        uint256 originalWithdrawn = _wantAmt;
 
         uint256 wantAmt = IERC20(wantAddress).balanceOf(address(this));
 
@@ -124,29 +134,25 @@ abstract contract BaseStrategy is Ownable, ReentrancyGuard, Pausable {
             _wantAmt = wantAmt;
         }
 
-        if (_wantAmt > wantLockedTotal()) {
-            _wantAmt = wantLockedTotal();
+        uint256 stakesRemoved = originalWithdrawn.mul(stakesTotal).div(wantLockedTotal()); // Fixed withdrawal to account for transfer tax tokens
+        if (stakesRemoved > stakesTotal) {
+            stakesRemoved = stakesTotal;
         }
-
-        uint256 sharesRemoved = _wantAmt.mul(sharesTotal).div(wantLockedTotal());
-        if (sharesRemoved > sharesTotal) {
-            sharesRemoved = sharesTotal;
-        }
-        sharesTotal = sharesTotal.sub(sharesRemoved);
+        stakesTotal = stakesTotal.sub(stakesRemoved);
 
         // Withdraw fee
-        uint256 withdrawFee = _wantAmt
-            .mul(withdrawFeeFactorMax.sub(withdrawFeeFactor))
-            .div(withdrawFeeFactorMax);
+        uint256 withdrawFee = _wantAmt // Want 100 tokens
+            .mul(withdrawFeeFactorMax.sub(withdrawFeeFactor))  // 100 tokens * (10000 - 9990) = 10 * 10 = 1000
+            .div(withdrawFeeFactorMax); // 1000 / 10000 = 0.1 tokens (withdrawal fees of 0.1%)
         if (withdrawFee > 0) {
             IERC20(wantAddress).safeTransfer(withdrawFeeAddress, withdrawFee);
         }
 
-        _wantAmt = _wantAmt.sub(withdrawFee);
+        _wantAmt = _wantAmt.sub(withdrawFee); // 100 tokens - 0.1 tokens = 99.9 tokens
 
         IERC20(wantAddress).safeTransfer(vaultChefAddress, _wantAmt);
 
-        return sharesRemoved;
+        return stakesRemoved;
     }
 
     // To pay for earn function
@@ -192,15 +198,24 @@ abstract contract BaseStrategy is Ownable, ReentrancyGuard, Pausable {
         if (buyBackRate > 0) {
             uint256 buyBackAmt = _earnedAmt.mul(buyBackRate).div(feeMax);
 
+            uint256 timeBefore = IERC20(timeAddress).balanceOf(address(this)); // Check TIME balance before swapping
+
             _safeSwap(
-                buyBackAmt.div(2),
-                earnedToTimePath,
-                treasuryAddress // 50% goes to Treasury
+              buyBackAmt,
+              earnedToTimePath,
+              address(this) // Single swap buys back TIME to Strat address
             );
-            _safeSwap(
-                buyBackAmt.div(2),
-                earnedToTimePath,
-                masterchefAddress // 50% goes to MasterChef
+
+            uint256 timeAfter = IERC20(timeAddress).balanceOf(address(this)).sub(timeBefore); // Get TIME balance after swap
+
+            _safeTimeTransfer(
+              treasuryAddress,
+              timeAfter.div(2) // Transfer 50% to treasuryAddress
+            );
+
+            _safeTimeTransfer(
+              masterchefAddress,
+              timeAfter.div(2) // Transfer 50% TIME to masterchefAddress
             );
 
             _earnedAmt = _earnedAmt.sub(buyBackAmt);
@@ -211,57 +226,56 @@ abstract contract BaseStrategy is Ownable, ReentrancyGuard, Pausable {
 
     function resetAllowances() external onlyGov {
         _resetAllowances();
+
+        emit ResetAllowances();
     }
 
     function pause() external onlyGov {
         _pause();
+
+        emit Pause();
     }
 
     function unpause() external onlyGov {
         _unpause();
-        _resetAllowances();
+        _farm();
+
+        emit Unpause();
     }
 
     function panic() external onlyGov {
         _pause();
         _emergencyVaultWithdraw();
-    }
 
-    function unpanic() external onlyGov {
-        _unpause();
-        _farm();
+        IERC20(wantAddress).safeDecreaseAllowance(
+            uniRouterAddress,
+            uint256(0)
+        );
+
+        emit Panic();
     }
 
     function setGov(address _govAddress) external onlyGov {
         govAddress = _govAddress;
+
+        emit SetGov(
+          _govAddress
+        );
     }
 
     function setSettings(
-        uint256 _controllerFee,
-        uint256 _rewardRate,
-        uint256 _buyBackRate,
         uint256 _withdrawFeeFactor,
-        uint256 _slippageFactor,
-        address _uniRouterAddress
+        uint256 _slippageFactor
     ) external onlyGov {
-        require(_controllerFee.add(_rewardRate).add(_buyBackRate) <= feeMaxTotal, "Max fee of 10%");
         require(_withdrawFeeFactor >= withdrawFeeFactorLL, "_withdrawFeeFactor too low");
         require(_withdrawFeeFactor <= withdrawFeeFactorMax, "_withdrawFeeFactor too high");
         require(_slippageFactor <= slippageFactorUL, "_slippageFactor too high");
-        controllerFee = _controllerFee;
-        rewardRate = _rewardRate;
-        buyBackRate = _buyBackRate;
         withdrawFeeFactor = _withdrawFeeFactor;
         slippageFactor = _slippageFactor;
-        uniRouterAddress = _uniRouterAddress;
 
         emit SetSettings(
-            _controllerFee,
-            _rewardRate,
-            _buyBackRate,
             _withdrawFeeFactor,
-            _slippageFactor,
-            _uniRouterAddress
+            _slippageFactor
         );
     }
 
@@ -273,13 +287,28 @@ abstract contract BaseStrategy is Ownable, ReentrancyGuard, Pausable {
         uint256[] memory amounts = IUniRouter02(uniRouterAddress).getAmountsOut(_amountIn, _path);
         uint256 amountOut = amounts[amounts.length.sub(1)];
 
-        IUniRouter02(uniRouterAddress).swapExactTokensForTokens(
-            _amountIn,
-            amountOut.mul(slippageFactor).div(1000),
-            _path,
-            _to,
-            now.add(600)
-        );
+        if (_amountIn > 0) {
+          IUniRouter02(uniRouterAddress).swapExactTokensForTokens(
+              _amountIn,
+              amountOut.mul(slippageFactor).div(1000),
+              _path,
+              _to,
+              now
+          );
+
+        }
+    }
+
+    // Safe TIME transfer function, just in case if rounding error causes pool to not have enough TIME.
+    function _safeTimeTransfer(address _to, uint256 _amount) internal {
+        uint256 timeBal = IERC20(timeAddress).balanceOf(address(this));
+        bool transferSuccess = false;
+        if (_amount > timeBal) {
+            transferSuccess = IERC20(timeAddress).transfer(_to, timeBal);
+        } else {
+            transferSuccess = IERC20(timeAddress).transfer(_to, _amount);
+        }
+        require(transferSuccess, "safeTimeTransfer: Transfer failed");
     }
 
     function _safeSwapWmatic(
@@ -290,12 +319,14 @@ abstract contract BaseStrategy is Ownable, ReentrancyGuard, Pausable {
         uint256[] memory amounts = IUniRouter02(uniRouterAddress).getAmountsOut(_amountIn, _path);
         uint256 amountOut = amounts[amounts.length.sub(1)];
 
-        IUniRouter02(uniRouterAddress).swapExactTokensForETH(
-            _amountIn,
-            amountOut.mul(slippageFactor).div(1000),
-            _path,
-            _to,
-            now.add(600)
-        );
+        if (_amountIn > 0) {
+          IUniRouter02(uniRouterAddress).swapExactTokensForETH(
+              _amountIn,
+              amountOut.mul(slippageFactor).div(1000),
+              _path,
+              _to,
+              now
+          );
+        }
     }
 }

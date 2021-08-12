@@ -15,12 +15,13 @@ contract VaultChef is Ownable, ReentrancyGuard {
 
     // Info of each user.
     struct UserInfo {
-        uint256 shares; // How many LP tokens the user has provided.
+        uint256 stakes; // How many LP tokens the user has provided.
     }
 
     struct PoolInfo {
         IERC20 want; // Address of the want token.
         address strat; // Strategy address that will auto compound want tokens
+        uint256 pid; // pid of pool
     }
 
     PoolInfo[] public poolInfo; // Info of each pool.
@@ -30,7 +31,8 @@ contract VaultChef is Ownable, ReentrancyGuard {
     event AddPool(address indexed strat);
     event Deposit(address indexed user, uint256 indexed pid, uint256 amount);
     event Withdraw(address indexed user, uint256 indexed pid, uint256 amount);
-    event EmergencyWithdraw(address indexed user, uint256 indexed pid, uint256 amount);
+    event ResetAllowances();
+    event ResetSingleAllowance(uint256 _pid);
 
     function poolLength() external view returns (uint256) {
         return poolInfo.length;
@@ -41,12 +43,15 @@ contract VaultChef is Ownable, ReentrancyGuard {
      */
     function addPool(address _strat) external onlyOwner nonReentrant {
         require(!strats[_strat], "Existing strategy");
+
         poolInfo.push(
             PoolInfo({
                 want: IERC20(IStrategy(_strat).wantAddress()),
-                strat: _strat
+                strat: _strat,
+                pid: poolInfo.length.sub(1)
             })
         );
+
         strats[_strat] = true;
         resetSingleAllowance(poolInfo.length.sub(1));
         emit AddPool(_strat);
@@ -57,12 +62,12 @@ contract VaultChef is Ownable, ReentrancyGuard {
         PoolInfo storage pool = poolInfo[_pid];
         UserInfo storage user = userInfo[_pid][_user];
 
-        uint256 sharesTotal = IStrategy(pool.strat).sharesTotal();
+        uint256 stakesTotal = IStrategy(pool.strat).stakesTotal();
         uint256 wantLockedTotal = IStrategy(poolInfo[_pid].strat).wantLockedTotal();
-        if (sharesTotal == 0) {
+        if (stakesTotal == 0) {
             return 0;
         }
-        return user.shares.mul(wantLockedTotal).div(sharesTotal);
+        return user.stakes.mul(wantLockedTotal).div(stakesTotal);
     }
 
     // Want tokens moved from user -> this -> Strat (compounding)
@@ -75,10 +80,15 @@ contract VaultChef is Ownable, ReentrancyGuard {
         UserInfo storage user = userInfo[_pid][_to];
 
         if (_wantAmt > 0) {
+            // _before _after check for deflationary tokens
+            uint256 _before = pool.want.balanceOf(address(this));
             pool.want.safeTransferFrom(msg.sender, address(this), _wantAmt);
+            uint256 _after = pool.want.balanceOf(address(this));
 
-            uint256 sharesAdded = IStrategy(poolInfo[_pid].strat).deposit(_to, _wantAmt);
-            user.shares = user.shares.add(sharesAdded);
+            _wantAmt = _after.sub(_before); // Additional check for deflationary tokens
+
+            uint256 stakesAdded = IStrategy(poolInfo[_pid].strat).deposit(_to, _wantAmt);
+            user.stakes = user.stakes.add(stakesAdded);
         }
         emit Deposit(_to, _pid, _wantAmt);
     }
@@ -93,23 +103,23 @@ contract VaultChef is Ownable, ReentrancyGuard {
         UserInfo storage user = userInfo[_pid][msg.sender];
 
         uint256 wantLockedTotal = IStrategy(poolInfo[_pid].strat).wantLockedTotal();
-        uint256 sharesTotal = IStrategy(poolInfo[_pid].strat).sharesTotal();
+        uint256 stakesTotal = IStrategy(poolInfo[_pid].strat).stakesTotal();
 
-        require(user.shares > 0, "user.shares is 0");
-        require(sharesTotal > 0, "sharesTotal is 0");
+        require(user.stakes > 0, "user.stakes is 0");
+        require(stakesTotal > 0, "stakesTotal is 0");
 
         // Withdraw want tokens
-        uint256 amount = user.shares.mul(wantLockedTotal).div(sharesTotal);
+        uint256 amount = user.stakes.mul(wantLockedTotal).div(stakesTotal);
         if (_wantAmt > amount) {
             _wantAmt = amount;
         }
         if (_wantAmt > 0) {
-            uint256 sharesRemoved = IStrategy(poolInfo[_pid].strat).withdraw(msg.sender, _wantAmt);
+            uint256 stakesRemoved = IStrategy(poolInfo[_pid].strat).withdraw(msg.sender, _wantAmt);
 
-            if (sharesRemoved > user.shares) {
-                user.shares = 0;
+            if (stakesRemoved > user.stakes) {
+                user.stakes = 0;
             } else {
-                user.shares = user.shares.sub(sharesRemoved);
+                user.stakes = user.stakes.sub(stakesRemoved);
             }
 
             uint256 wantBal = IERC20(pool.want).balanceOf(address(this));
@@ -122,7 +132,7 @@ contract VaultChef is Ownable, ReentrancyGuard {
     }
 
     // Withdraw everything from pool for yourself
-    function withdrawAll(uint256 _pid) external {
+    function withdrawAll(uint256 _pid) external nonReentrant {
         _withdraw(_pid, uint256(-1), msg.sender);
     }
 
@@ -132,11 +142,13 @@ contract VaultChef is Ownable, ReentrancyGuard {
             pool.want.safeApprove(pool.strat, uint256(0));
             pool.want.safeIncreaseAllowance(pool.strat, uint256(-1));
         }
+        emit ResetAllowances();
     }
 
     function resetSingleAllowance(uint256 _pid) public onlyOwner {
         PoolInfo storage pool = poolInfo[_pid];
         pool.want.safeApprove(pool.strat, uint256(0));
         pool.want.safeIncreaseAllowance(pool.strat, uint256(-1));
+        emit ResetSingleAllowance(_pid);
     }
 }

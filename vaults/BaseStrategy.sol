@@ -30,20 +30,20 @@ abstract contract BaseStrategy is Ownable, ReentrancyGuard, Pausable {
     address public govAddress;
 
     uint256 public lastEarnBlock = block.number;
-    uint256 public stakesTotal = 0;
+    uint256 public sharesTotal = 0;
 
     address public constant treasuryAddress = 0x52e4cf8B72bd0EE362666fc578dB916f20860bBf; // Treasury Wallet Address
     address public constant masterchefAddress = 0x41C4dFA389e8c43BA6220aa62021ed246d441306; // TIME MasterChef contract
 
     uint256 public controllerFee = 50; // 0.5%
     uint256 public rewardRate = 0;
-    uint256 public buyBackRate = 450; // 4.5% of all emissions are being used to buyback TIME
+    uint256 public buyBackRate = 500; // 5% of all emissions are being used to buyback TIME
     uint256 public constant feeMaxTotal = 1000;
     uint256 public constant feeMax = 10000; // 100 = 1%, 10000 = 100%
 
     uint256 public withdrawFeeFactor = 9990; // 0.1% withdraw fee
     uint256 public constant withdrawFeeFactorMax = 10000;
-    uint256 public constant withdrawFeeFactorLL = 9980; // 0.2% withdrawal fee (lower limit)
+    uint256 public constant withdrawFeeFactorLL = 9900; // 1% withdrawal fee (lower limit)
 
     uint256 public slippageFactor = 950; // 5% default slippage tolerance
     uint256 public constant slippageFactorUL = 995;
@@ -78,7 +78,7 @@ abstract contract BaseStrategy is Ownable, ReentrancyGuard, Pausable {
     function _vaultDeposit(uint256 _amount) internal virtual;
     function _vaultWithdraw(uint256 _amount) internal virtual;
     function earn() external virtual;
-    function vaultStakesTotal() public virtual view returns (uint256);
+    function vaultSharesTotal() public virtual view returns (uint256);
     function wantLockedTotal() public virtual view returns (uint256);
     function _resetAllowances() internal virtual;
     function _emergencyVaultWithdraw() internal virtual;
@@ -98,24 +98,24 @@ abstract contract BaseStrategy is Ownable, ReentrancyGuard, Pausable {
         _wantAmt = _after.sub(_before); // Additional check for deflationary tokens
 
         // Proper deposit amount for tokens with fees, or vaults with deposit fees
-        uint256 stakesAdded = _farm();
-        if (stakesTotal > 0) {
-            stakesAdded = stakesAdded.mul(stakesTotal).div(wantLockedBefore);
+        uint256 sharesAdded = _farm();
+        if (sharesTotal > 0) {
+            sharesAdded = sharesAdded.mul(sharesTotal).div(wantLockedBefore);
         }
-        stakesTotal = stakesTotal.add(stakesAdded);
+        sharesTotal = sharesTotal.add(sharesAdded);
 
-        return stakesAdded;
+        return sharesAdded;
     }
 
     function _farm() internal returns (uint256) {
         uint256 wantAmt = IERC20(wantAddress).balanceOf(address(this));
         if (wantAmt == 0) return 0;
 
-        uint256 stakesBefore = vaultStakesTotal();
+        uint256 sharesBefore = vaultSharesTotal();
         _vaultDeposit(wantAmt);
-        uint256 stakesAfter = vaultStakesTotal();
+        uint256 sharesAfter = vaultSharesTotal();
 
-        return stakesAfter.sub(stakesBefore);
+        return sharesAfter.sub(sharesBefore);
     }
 
     function withdraw(address _userAddress, uint256 _wantAmt) external onlyOwner nonReentrant returns (uint256) {
@@ -134,11 +134,11 @@ abstract contract BaseStrategy is Ownable, ReentrancyGuard, Pausable {
             _wantAmt = wantAmt;
         }
 
-        uint256 stakesRemoved = originalWithdrawn.mul(stakesTotal).div(wantLockedTotal()); // Fixed withdrawal to account for transfer tax tokens
-        if (stakesRemoved > stakesTotal) {
-            stakesRemoved = stakesTotal;
+        uint256 sharesRemoved = originalWithdrawn.mul(sharesTotal).div(wantLockedTotal()); // Fixed withdrawal to account for transfer tax tokens
+        if (sharesRemoved > sharesTotal) {
+            sharesRemoved = sharesTotal;
         }
-        stakesTotal = stakesTotal.sub(stakesRemoved);
+        sharesTotal = sharesTotal.sub(sharesRemoved);
 
         // Withdraw fee
         uint256 withdrawFee = _wantAmt // Want 100 tokens
@@ -152,7 +152,7 @@ abstract contract BaseStrategy is Ownable, ReentrancyGuard, Pausable {
 
         IERC20(wantAddress).safeTransfer(vaultChefAddress, _wantAmt);
 
-        return stakesRemoved;
+        return sharesRemoved;
     }
 
     // To pay for earn function

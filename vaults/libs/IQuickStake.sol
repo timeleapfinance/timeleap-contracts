@@ -4,7 +4,7 @@ pragma solidity 0.6.12;
 
 interface IQuickStake {
     function rewardRate() external view returns (uint256);
-    
+
     function rewardsDuration() external view returns (uint256);
 
     function lastTimeRewardApplicable() external view returns (uint256);

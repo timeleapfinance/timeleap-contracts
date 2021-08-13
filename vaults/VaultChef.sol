@@ -15,7 +15,7 @@ contract VaultChef is Ownable, ReentrancyGuard {
 
     // Info of each user.
     struct UserInfo {
-        uint256 stakes; // How many LP tokens the user has provided.
+        uint256 shares; // How many LP tokens the user has provided.
     }
 
     struct PoolInfo {
@@ -25,7 +25,7 @@ contract VaultChef is Ownable, ReentrancyGuard {
     }
 
     PoolInfo[] public poolInfo; // Info of each pool.
-    mapping(uint256 => mapping(address => UserInfo)) public userInfo; // Info of each user that stakes LP tokens.
+    mapping(uint256 => mapping(address => UserInfo)) public userInfo; // Info of each user that shares LP tokens.
     mapping(address => bool) private strats;
 
     event AddPool(address indexed strat);
@@ -62,12 +62,12 @@ contract VaultChef is Ownable, ReentrancyGuard {
         PoolInfo storage pool = poolInfo[_pid];
         UserInfo storage user = userInfo[_pid][_user];
 
-        uint256 stakesTotal = IStrategy(pool.strat).stakesTotal();
+        uint256 sharesTotal = IStrategy(pool.strat).sharesTotal();
         uint256 wantLockedTotal = IStrategy(poolInfo[_pid].strat).wantLockedTotal();
-        if (stakesTotal == 0) {
+        if (sharesTotal == 0) {
             return 0;
         }
-        return user.stakes.mul(wantLockedTotal).div(stakesTotal);
+        return user.shares.mul(wantLockedTotal).div(sharesTotal);
     }
 
     // Want tokens moved from user -> this -> Strat (compounding)
@@ -87,8 +87,8 @@ contract VaultChef is Ownable, ReentrancyGuard {
 
             _wantAmt = _after.sub(_before); // Additional check for deflationary tokens
 
-            uint256 stakesAdded = IStrategy(poolInfo[_pid].strat).deposit(_to, _wantAmt);
-            user.stakes = user.stakes.add(stakesAdded);
+            uint256 sharesAdded = IStrategy(poolInfo[_pid].strat).deposit(_to, _wantAmt);
+            user.shares = user.shares.add(sharesAdded);
         }
         emit Deposit(_to, _pid, _wantAmt);
     }
@@ -103,23 +103,23 @@ contract VaultChef is Ownable, ReentrancyGuard {
         UserInfo storage user = userInfo[_pid][msg.sender];
 
         uint256 wantLockedTotal = IStrategy(poolInfo[_pid].strat).wantLockedTotal();
-        uint256 stakesTotal = IStrategy(poolInfo[_pid].strat).stakesTotal();
+        uint256 sharesTotal = IStrategy(poolInfo[_pid].strat).sharesTotal();
 
-        require(user.stakes > 0, "user.stakes is 0");
-        require(stakesTotal > 0, "stakesTotal is 0");
+        require(user.shares > 0, "user.shares is 0");
+        require(sharesTotal > 0, "sharesTotal is 0");
 
         // Withdraw want tokens
-        uint256 amount = user.stakes.mul(wantLockedTotal).div(stakesTotal);
+        uint256 amount = user.shares.mul(wantLockedTotal).div(sharesTotal);
         if (_wantAmt > amount) {
             _wantAmt = amount;
         }
         if (_wantAmt > 0) {
-            uint256 stakesRemoved = IStrategy(poolInfo[_pid].strat).withdraw(msg.sender, _wantAmt);
+            uint256 sharesRemoved = IStrategy(poolInfo[_pid].strat).withdraw(msg.sender, _wantAmt);
 
-            if (stakesRemoved > user.stakes) {
-                user.stakes = 0;
+            if (sharesRemoved > user.shares) {
+                user.shares = 0;
             } else {
-                user.stakes = user.stakes.sub(stakesRemoved);
+                user.shares = user.shares.sub(sharesRemoved);
             }
 
             uint256 wantBal = IERC20(pool.want).balanceOf(address(this));

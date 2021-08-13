@@ -61,7 +61,7 @@ contract StrategyQuickSwap is BaseStrategyLPSingle {
         IQuickStake(quickSwapAddress).getReward();
     }
 
-    function vaultStakesTotal() public override view returns (uint256) {
+    function vaultSharesTotal() public override view returns (uint256) {
         return IQuickStake(quickSwapAddress).balanceOf(address(this));
     }
 
@@ -103,6 +103,6 @@ contract StrategyQuickSwap is BaseStrategyLPSingle {
     }
 
     function _emergencyVaultWithdraw() internal override {
-        IQuickStake(quickSwapAddress).withdraw(vaultStakesTotal());
+        IQuickStake(quickSwapAddress).withdraw(vaultSharesTotal());
     }
 }

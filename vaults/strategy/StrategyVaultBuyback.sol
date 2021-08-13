@@ -30,7 +30,7 @@ contract StrategyVaultBurn is Ownable, ReentrancyGuard, Pausable {
 
     uint256 public buybackCycle = 6 hours;
     uint256 public lastEarnBlock = block.timestamp;
-    uint256 public stakesTotal = 0;
+    uint256 public sharesTotal = 0;
 
     address public constant treasuryAddress = 0x52e4cf8B72bd0EE362666fc578dB916f20860bBf; // Treasury Wallet Address
     address public constant masterchefAddress = 0x41C4dFA389e8c43BA6220aa62021ed246d441306; // TIME MasterChef contract
@@ -78,24 +78,24 @@ contract StrategyVaultBurn is Ownable, ReentrancyGuard, Pausable {
         );
 
         // Proper deposit amount for tokens with fees, or vaults with deposit fees
-        uint256 stakesAdded = _farm();
-        if (stakesTotal > 0) {
-            stakesAdded = stakesAdded.mul(stakesTotal).div(wantLockedBefore);
+        uint256 sharesAdded = _farm();
+        if (sharesTotal > 0) {
+            sharesAdded = sharesAdded.mul(sharesTotal).div(wantLockedBefore);
         }
-        stakesTotal = stakesTotal.add(stakesAdded);
+        sharesTotal = sharesTotal.add(sharesAdded);
 
-        return stakesAdded;
+        return sharesAdded;
     }
 
     function _farm() internal returns (uint256) {
         uint256 wantAmt = IERC20(wantAddress).balanceOf(address(this));
         if (wantAmt == 0) return 0;
 
-        uint256 stakesBefore = vaultStakesTotal();
+        uint256 sharesBefore = vaultSharesTotal();
         IQuickStake(quickSwapAddress).stake(wantAmt);
-        uint256 stakesAfter = vaultStakesTotal();
+        uint256 sharesAfter = vaultSharesTotal();
 
-        return stakesAfter.sub(stakesBefore);
+        return sharesAfter.sub(sharesBefore);
     }
 
     function withdraw(address _userAddress, uint256 _wantAmt) external onlyOwner nonReentrant returns (uint256) {
@@ -117,15 +117,15 @@ contract StrategyVaultBurn is Ownable, ReentrancyGuard, Pausable {
             _wantAmt = wantLockedTotal();
         }
 
-        uint256 stakesRemoved = _wantAmt.mul(stakesTotal).div(wantLockedTotal());
-        if (stakesRemoved > stakesTotal) {
-            stakesRemoved = stakesTotal;
+        uint256 sharesRemoved = _wantAmt.mul(sharesTotal).div(wantLockedTotal());
+        if (sharesRemoved > sharesTotal) {
+            sharesRemoved = sharesTotal;
         }
-        stakesTotal = stakesTotal.sub(stakesRemoved);
+        sharesTotal = sharesTotal.sub(sharesRemoved);
 
         IERC20(wantAddress).safeTransfer(vaultChefAddress, _wantAmt);
 
-        return stakesRemoved;
+        return sharesRemoved;
     }
 
     function earn() external nonReentrant whenNotPaused onlyGov {
@@ -191,7 +191,7 @@ contract StrategyVaultBurn is Ownable, ReentrancyGuard, Pausable {
         _farm();
     }
 
-    function vaultStakesTotal() public view returns (uint256) {
+    function vaultSharesTotal() public view returns (uint256) {
         return IQuickStake(quickSwapAddress).balanceOf(address(this));
     }
 
@@ -227,7 +227,7 @@ contract StrategyVaultBurn is Ownable, ReentrancyGuard, Pausable {
 
     function panic() external onlyGov {
         _pause();
-        IQuickStake(quickSwapAddress).withdraw(vaultStakesTotal());
+        IQuickStake(quickSwapAddress).withdraw(vaultSharesTotal());
         IERC20(wantAddress).safeDecreaseAllowance(
             uniRouterAddress,
             uint256(0)

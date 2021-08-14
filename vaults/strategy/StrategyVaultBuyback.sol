@@ -32,7 +32,7 @@ contract StrategyVaultBurn is Ownable, ReentrancyGuard, Pausable {
     uint256 public lastEarnBlock = block.timestamp;
     uint256 public sharesTotal = 0;
 
-    address public constant treasuryAddress = 0x52e4cf8B72bd0EE362666fc578dB916f20860bBf; // Treasury Wallet Address
+    address public constant treasuryAddress = 0x374BD17C475f972D6aF4EA0fAC0744B5500A959F; // Treasury Contract Address, behind 28-day Timelock
     address public constant masterchefAddress = 0x41C4dFA389e8c43BA6220aa62021ed246d441306; // TIME MasterChef contract
 
     uint256 public slippageFactor = 950; // 5% default slippage tolerance
@@ -91,9 +91,9 @@ contract StrategyVaultBurn is Ownable, ReentrancyGuard, Pausable {
         uint256 wantAmt = IERC20(wantAddress).balanceOf(address(this));
         if (wantAmt == 0) return 0;
 
-        uint256 sharesBefore = vaultSharesTotal();
+        uint256 sharesBefore = totalInUnderlying();
         IQuickStake(quickSwapAddress).stake(wantAmt);
-        uint256 sharesAfter = vaultSharesTotal();
+        uint256 sharesAfter = totalInUnderlying();
 
         return sharesAfter.sub(sharesBefore);
     }
@@ -113,7 +113,7 @@ contract StrategyVaultBurn is Ownable, ReentrancyGuard, Pausable {
             _wantAmt = wantAmt;
         }
 
-        if (_wantAmt > wantLockedTotal()) {
+        if (_wantAmt > wantLockedTotal()) {                           // Final check!! wantLockedTotal() might not be the same as LP token balance
             _wantAmt = wantLockedTotal();
         }
 
@@ -191,7 +191,7 @@ contract StrategyVaultBurn is Ownable, ReentrancyGuard, Pausable {
         _farm();
     }
 
-    function vaultSharesTotal() public view returns (uint256) {
+    function totalInUnderlying() public view returns (uint256) {
         return IQuickStake(quickSwapAddress).balanceOf(address(this));
     }
 
@@ -227,11 +227,8 @@ contract StrategyVaultBurn is Ownable, ReentrancyGuard, Pausable {
 
     function panic() external onlyGov {
         _pause();
-        IQuickStake(quickSwapAddress).withdraw(vaultSharesTotal());
-        IERC20(wantAddress).safeDecreaseAllowance(
-            uniRouterAddress,
-            uint256(0)
-        );
+        IQuickStake(quickSwapAddress).withdraw(totalInUnderlying());
+        IERC20(wantAddress).safeApprove(uniRouterAddress, 0); // Revoke approval
 
         emit Panic();
     }
@@ -263,7 +260,7 @@ contract StrategyVaultBurn is Ownable, ReentrancyGuard, Pausable {
               amountOut.mul(slippageFactor).div(1000),
               _path,
               _to,
-              now
+              now.add(600) // Required as this is a deadline to account for network congestion
             );
         }
     }

@@ -32,7 +32,7 @@ abstract contract BaseStrategy is Ownable, ReentrancyGuard, Pausable {
     uint256 public lastEarnBlock = block.number;
     uint256 public sharesTotal = 0;
 
-    address public constant treasuryAddress = 0x52e4cf8B72bd0EE362666fc578dB916f20860bBf; // Treasury Wallet Address
+    address public constant treasuryAddress = 0x374BD17C475f972D6aF4EA0fAC0744B5500A959F; // Treasury Contract Address, behind 28-day Timelock
     address public constant masterchefAddress = 0x41C4dFA389e8c43BA6220aa62021ed246d441306; // TIME MasterChef contract
 
     uint256 public controllerFee = 50; // 0.5%
@@ -78,7 +78,7 @@ abstract contract BaseStrategy is Ownable, ReentrancyGuard, Pausable {
     function _vaultDeposit(uint256 _amount) internal virtual;
     function _vaultWithdraw(uint256 _amount) internal virtual;
     function earn() external virtual;
-    function vaultSharesTotal() public virtual view returns (uint256);
+    function totalInUnderlying() public virtual view returns (uint256);
     function wantLockedTotal() public virtual view returns (uint256);
     function _resetAllowances() internal virtual;
     function _emergencyVaultWithdraw() internal virtual;
@@ -87,15 +87,11 @@ abstract contract BaseStrategy is Ownable, ReentrancyGuard, Pausable {
         // Call must happen before transfer
         uint256 wantLockedBefore = wantLockedTotal();
 
-        // _before _after check for deflationary tokens
-        uint256 _before = IERC20(wantAddress).balanceOf(address(this));
         IERC20(wantAddress).safeTransferFrom(
             address(msg.sender),
             address(this),
             _wantAmt
         );
-        uint256 _after = IERC20(wantAddress).balanceOf(address(this));
-        _wantAmt = _after.sub(_before); // Additional check for deflationary tokens
 
         // Proper deposit amount for tokens with fees, or vaults with deposit fees
         uint256 sharesAdded = _farm();
@@ -111,30 +107,32 @@ abstract contract BaseStrategy is Ownable, ReentrancyGuard, Pausable {
         uint256 wantAmt = IERC20(wantAddress).balanceOf(address(this));
         if (wantAmt == 0) return 0;
 
-        uint256 sharesBefore = vaultSharesTotal();
+        uint256 sharesBefore = totalInUnderlying();
         _vaultDeposit(wantAmt);
-        uint256 sharesAfter = vaultSharesTotal();
+        uint256 sharesAfter = totalInUnderlying();
 
         return sharesAfter.sub(sharesBefore);
     }
 
     function withdraw(address _userAddress, uint256 _wantAmt) external onlyOwner nonReentrant returns (uint256) {
         require(_wantAmt > 0, "_wantAmt is 0");
-        uint256 originalWithdrawn = _wantAmt;
 
-        uint256 wantAmt = IERC20(wantAddress).balanceOf(address(this));
+        uint256 wantAmt = IERC20(wantAddress).balanceOf(address(this)); // Check balance for wantAmt on strategy
 
         // Check if strategy has tokens from panic
-        if (_wantAmt > wantAmt) {
-            _vaultWithdraw(_wantAmt.sub(wantAmt));
-            wantAmt = IERC20(wantAddress).balanceOf(address(this));
+        if (_wantAmt > wantAmt) {                                       // requested withdraw more than balance
+            _vaultWithdraw(_wantAmt.sub(wantAmt));                      // withdraws all existing balance available (if panic, wantAmt = 0)
+            wantAmt = IERC20(wantAddress).balanceOf(address(this));     // reset wantAmt value
         }
 
-        if (_wantAmt > wantAmt) {
-            _wantAmt = wantAmt;
+        if (_wantAmt > wantAmt) {                                       // conditional to set requested _wantAmt to balance of want tokens in contract
+            _wantAmt = wantAmt;                                         // That way, user only withdraws what is allocated
         }
 
-        uint256 sharesRemoved = originalWithdrawn.mul(sharesTotal).div(wantLockedTotal()); // Fixed withdrawal to account for transfer tax tokens
+        if (_wantAmt > wantLockedTotal()) {                             // Final check!! wantLockedTotal() might not be the same as LP token balance
+            _wantAmt = wantLockedTotal();
+        }
+        uint256 sharesRemoved = _wantAmt.mul(sharesTotal).div(wantLockedTotal());
         if (sharesRemoved > sharesTotal) {
             sharesRemoved = sharesTotal;
         }
@@ -156,6 +154,7 @@ abstract contract BaseStrategy is Ownable, ReentrancyGuard, Pausable {
     }
 
     // To pay for earn function
+    // To pay for other operating costs that will further grow our protocol
     function distributeFees(uint256 _earnedAmt) internal returns (uint256) {
         if (controllerFee > 0) {
             uint256 fee = _earnedAmt.mul(controllerFee).div(feeMax);
@@ -247,10 +246,7 @@ abstract contract BaseStrategy is Ownable, ReentrancyGuard, Pausable {
         _pause();
         _emergencyVaultWithdraw();
 
-        IERC20(wantAddress).safeDecreaseAllowance(
-            uniRouterAddress,
-            uint256(0)
-        );
+        IERC20(wantAddress).safeApprove(uniRouterAddress, 0); // Revoke approval
 
         emit Panic();
     }
@@ -293,7 +289,7 @@ abstract contract BaseStrategy is Ownable, ReentrancyGuard, Pausable {
               amountOut.mul(slippageFactor).div(1000),
               _path,
               _to,
-              now
+              now.add(600) // Required as this is a deadline to account for network congestion
           );
 
         }
@@ -325,7 +321,7 @@ abstract contract BaseStrategy is Ownable, ReentrancyGuard, Pausable {
               amountOut.mul(slippageFactor).div(1000),
               _path,
               _to,
-              now
+              now.add(600) // Required as this is a deadline to account for network congestion
           );
         }
     }

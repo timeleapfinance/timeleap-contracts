@@ -21,7 +21,6 @@ contract VaultChef is Ownable, ReentrancyGuard {
     struct PoolInfo {
         IERC20 want; // Address of the want token.
         address strat; // Strategy address that will auto compound want tokens
-        uint256 pid; // pid of pool
     }
 
     PoolInfo[] public poolInfo; // Info of each pool.
@@ -32,7 +31,7 @@ contract VaultChef is Ownable, ReentrancyGuard {
     event Deposit(address indexed user, uint256 indexed pid, uint256 amount);
     event Withdraw(address indexed user, uint256 indexed pid, uint256 amount);
     event ResetAllowances();
-    event ResetSingleAllowance(uint256 _pid);
+    event ResetSingleAllowance(uint256 pid);
 
     function poolLength() external view returns (uint256) {
         return poolInfo.length;
@@ -47,8 +46,7 @@ contract VaultChef is Ownable, ReentrancyGuard {
         poolInfo.push(
             PoolInfo({
                 want: IERC20(IStrategy(_strat).wantAddress()),
-                strat: _strat,
-                pid: poolInfo.length.sub(1)
+                strat: _strat
             })
         );
 

@@ -11,7 +11,7 @@
 
 ## Ecosystem
 
-![Buyback and Make Ecosystem](./images/buyback-and-make.jpeg)]
+![Buyback and Make Ecosystem](./images/buyback-and-make.jpeg)
 
 ## Contracts
 

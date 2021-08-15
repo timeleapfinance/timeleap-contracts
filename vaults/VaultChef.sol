@@ -42,6 +42,7 @@ contract VaultChef is Ownable, ReentrancyGuard {
      */
     function addPool(address _strat) external onlyOwner nonReentrant {
         require(!strats[_strat], "Existing strategy");
+        IERC20(IStrategy(_strat).wantAddress()).allowance(address(this), address(_strat));
 
         poolInfo.push(
             PoolInfo({

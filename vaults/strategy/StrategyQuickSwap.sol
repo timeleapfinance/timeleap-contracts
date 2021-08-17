@@ -13,7 +13,7 @@ contract StrategyQuickSwap is BaseStrategyLPSingle {
 
     constructor(
         address _vaultChefAddress,
-        address _quickSwapAddress,
+        address _quickSwapAddress, // QuickSwap Staking Rewards
         address _wantAddress,
         address _earnedAddress,
         address[] memory _earnedToWmaticPath,

@@ -37,13 +37,13 @@ abstract contract BaseStrategy is Ownable, ReentrancyGuard, Pausable {
 
     uint256 public controllerFee = 50; // 0.5%
     uint256 public rewardRate = 0;
-    uint256 public buyBackRate = 500; // 5% of all emissions are being used to buyback TIME
+    uint256 public buyBackRate = 450; // 4.5% of all emissions are being used to buyback TIME
     uint256 public constant feeMaxTotal = 1000;
     uint256 public constant feeMax = 10000; // 100 = 1%, 10000 = 100%
 
-    uint256 public withdrawFeeFactor = 9990; // 0.1% withdraw fee
+    uint256 public withdrawFeeFactor = 10000; // NO Withdrawal Fees
     uint256 public constant withdrawFeeFactorMax = 10000;
-    uint256 public constant withdrawFeeFactorLL = 9900; // 1% withdrawal fee (lower limit)
+    uint256 public constant withdrawFeeFactorLL = 9900; // Max 1% withdrawal fee (lower limit)
 
     uint256 public slippageFactor = 950; // 5% default slippage tolerance
     uint256 public constant slippageFactorUL = 995;
@@ -289,7 +289,7 @@ abstract contract BaseStrategy is Ownable, ReentrancyGuard, Pausable {
               amountOut.mul(slippageFactor).div(1000),
               _path,
               _to,
-              now.add(600) // Required as this is a deadline to account for network congestion
+              now
           );
 
         }
@@ -321,7 +321,7 @@ abstract contract BaseStrategy is Ownable, ReentrancyGuard, Pausable {
               amountOut.mul(slippageFactor).div(1000),
               _path,
               _to,
-              now.add(600) // Required as this is a deadline to account for network congestion
+              now
           );
         }
     }

@@ -7,7 +7,7 @@ import "./BaseStrategyLP.sol";
 abstract contract BaseStrategyLPSingle is BaseStrategyLP {
     using SafeMath for uint256;
     using SafeERC20 for IERC20;
-    
+
     function _vaultHarvest() internal virtual;
 
     function earn() external override nonReentrant whenNotPaused onlyGov {
@@ -21,7 +21,7 @@ abstract contract BaseStrategyLPSingle is BaseStrategyLP {
             earnedAmt = distributeFees(earnedAmt);
             earnedAmt = distributeRewards(earnedAmt);
             earnedAmt = buyBack(earnedAmt);
-    
+
             if (earnedAddress != token0Address) {
                 // Swap half earned to token0
                 _safeSwap(
@@ -30,7 +30,7 @@ abstract contract BaseStrategyLPSingle is BaseStrategyLP {
                     address(this)
                 );
             }
-    
+
             if (earnedAddress != token1Address) {
                 // Swap half earned to token1
                 _safeSwap(
@@ -39,7 +39,7 @@ abstract contract BaseStrategyLPSingle is BaseStrategyLP {
                     address(this)
                 );
             }
-    
+
             // Get want tokens, ie. add liquidity
             uint256 token0Amt = IERC20(token0Address).balanceOf(address(this));
             uint256 token1Amt = IERC20(token1Address).balanceOf(address(this));
@@ -52,12 +52,12 @@ abstract contract BaseStrategyLPSingle is BaseStrategyLP {
                     0,
                     0,
                     address(this),
-                    now.add(600)
+                    now
                 );
             }
-    
+
             lastEarnBlock = block.number;
-    
+
             _farm();
         }
     }

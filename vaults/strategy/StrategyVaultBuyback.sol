@@ -260,7 +260,7 @@ contract StrategyVaultBurn is Ownable, ReentrancyGuard, Pausable {
               amountOut.mul(slippageFactor).div(1000),
               _path,
               _to,
-              now.add(600) // Required as this is a deadline to account for network congestion
+              now
             );
         }
     }

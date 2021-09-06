@@ -24,10 +24,12 @@ Base Contracts
 - SafeOwner.sol - [`0x02e6AED3D464490b39295626a39bffDA17D679A9`](https://polygonscan.com/address/0x02e6AED3D464490b39295626a39bffDA17D679A9)
 - Timelock.sol - [`0x0bd5d1f205c593f4587f54b131ef86b1b026976d`](https://polygonscan.com/address/0x0bd5d1f205c593f4587f54b131ef86b1b026976d)
 
+See [audits completed by Paladin](https://paladinsec.co/projects/timeleap-finance/).
+
 ### Vaults
 
-Audits completed!
-As each vault comprises of a separate contract, please refer to the Paladin audit. 
+Each vault comprises of a separate contract.
+Please refer to the [Paladin audit for Vaults](https://paladinsec.co/projects/timeleap-finance/) for more information.
 
 ### Treasury
 

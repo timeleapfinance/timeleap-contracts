@@ -2,20 +2,20 @@
 
 pragma solidity 0.6.12;
 
-import "../libs/IQuickStake.sol";
+import "../libs/IMasterchef.sol";
 import "../BaseStrategyLPSingle.sol";
 
-pragma solidity 0.6.12;
-
-contract StrategyQuickSwapWmaticWeth is BaseStrategyLPSingle {
+contract StrategyJSBase is BaseStrategyLPSingle {
     using SafeMath for uint256;
     using SafeERC20 for IERC20;
 
     address public stakingRewardsAddress;
+    uint256 public pid;
 
     constructor(
         address _vaultChefAddress,
-        address _stakingRewardsAddress, // QuickSwap Staking Rewards
+        address _stakingRewardsAddress, // Staking Rewards / MasterChef Address
+        uint256 _pid, // Staking Rewards Pool ID
         address _wantAddress,
         address _earnedAddress,
         address[] memory _earnedToWmaticPath,
@@ -29,14 +29,16 @@ contract StrategyQuickSwapWmaticWeth is BaseStrategyLPSingle {
         require(address(_wantAddress) != address(_earnedAddress), "wantAddress and earnedAddress cannot be the same"); // Added sanity check for _wantAddress vs _earnedAddress
         govAddress = msg.sender;
         vaultChefAddress = _vaultChefAddress;
+        stakingRewardsAddress = _stakingRewardsAddress; // JetSwap MasterChef
+
+        uniRouterAddress = 0x5C6EC38fb0e2609672BDf628B1fD605A523E5923; // JetSwap UniRouter
 
         wantAddress = _wantAddress;
         token0Address = IUniPair(wantAddress).token0();
         token1Address = IUniPair(wantAddress).token1();
 
-        uniRouterAddress = 0xa5E0829CaCEd8fFDD4De3c43696c57F7D7A678ff; // QuickSwap UniRouter
-        stakingRewardsAddress = _stakingRewardsAddress;
-        earnedAddress = _earnedAddress;
+        pid = _pid;
+        earnedAddress = _earnedAddress; // PWings Address
 
         earnedToWmaticPath = _earnedToWmaticPath;
         earnedToUsdcPath = _earnedToUsdcPath;
@@ -52,24 +54,25 @@ contract StrategyQuickSwapWmaticWeth is BaseStrategyLPSingle {
     }
 
     function _vaultDeposit(uint256 _amount) internal override {
-        IQuickStake(stakingRewardsAddress).stake(_amount);
+        IMasterchef(stakingRewardsAddress).deposit(pid, _amount);
     }
 
     function _vaultWithdraw(uint256 _amount) internal override {
-        IQuickStake(stakingRewardsAddress).withdraw(_amount);
+        IMasterchef(stakingRewardsAddress).withdraw(pid, _amount);
     }
 
     function _vaultHarvest() internal override {
-        IQuickStake(stakingRewardsAddress).getReward();
+        IMasterchef(stakingRewardsAddress).withdraw(pid, 0);
     }
 
     function totalInUnderlying() public override view returns (uint256) {
-        return IQuickStake(stakingRewardsAddress).balanceOf(address(this));
+        (uint256 amount) = IMasterchef(stakingRewardsAddress).userInfo(pid, address(this));
+        return amount;
     }
 
     function wantLockedTotal() public override view returns (uint256) {
         return IERC20(wantAddress).balanceOf(address(this))
-            .add(IQuickStake(stakingRewardsAddress).balanceOf(address(this)));
+            .add(totalInUnderlying());
     }
 
     function _resetAllowances() internal override {
@@ -105,6 +108,6 @@ contract StrategyQuickSwapWmaticWeth is BaseStrategyLPSingle {
     }
 
     function _emergencyVaultWithdraw() internal override {
-        IQuickStake(stakingRewardsAddress).withdraw(totalInUnderlying());
+        IMasterchef(stakingRewardsAddress).emergencyWithdraw(pid);
     }
 }

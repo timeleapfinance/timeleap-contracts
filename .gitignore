@@ -6,6 +6,9 @@ compile.js
 # Ignore flattened contracts
 /flatten
 
+# Ignore Research
+/research
+
 # Ignore references
 /farm/reference
 /vaults/reference

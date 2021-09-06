@@ -26,7 +26,8 @@ Base Contracts
 
 ### Vaults
 
-Pending audits
+Audits completed!
+As each vault comprises of a separate contract, please refer to the Paladin audit. 
 
 ### Treasury
 

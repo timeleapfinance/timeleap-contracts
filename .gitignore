@@ -14,3 +14,7 @@ compile.js
 /vaults/reference
 /vaults/future
 /vaults/flattened
+
+# Ignore sensitive contracts
+/strategy
+/libs

@@ -16,5 +16,5 @@ compile.js
 /vaults/flattened
 
 # Ignore sensitive contracts
-/strategy
-/libs
+/vaults/strategy
+/vaults/libs

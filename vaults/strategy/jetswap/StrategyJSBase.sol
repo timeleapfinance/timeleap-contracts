@@ -66,7 +66,7 @@ contract StrategyJSBase is BaseStrategyLPSingle {
     }
 
     function totalInUnderlying() public override view returns (uint256) {
-        (uint256 amount) = IMasterchef(stakingRewardsAddress).userInfo(pid, address(this));
+        (uint256 amount,) = IMasterchef(stakingRewardsAddress).userInfo(pid, address(this));
         return amount;
     }
 
